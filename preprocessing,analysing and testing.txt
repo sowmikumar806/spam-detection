@@ -1,0 +1,87 @@
+# load the dataset
+> emails = read.csv('emails.csv', stringsAsFactors = FALSE)
+> str(emails)
+# confusion matrix of emails whether spam or not
+> table(emails$spam)
+
+# To preprocess the data
+
+# load text mining package
+> library(tm)
+# Build a new corpus variable called corpus
+> corpus = VCorpus(VectorSource(emails$text))
+# convert the text to lowercase
+> corpus = tm_map(corpus, content_transformer(tolower))
+> corpus = tm_map(corpus, PlainTextDocument)
+# remove all punctuation from the corpus
+> corpus = tm_map(corpus, removePunctuation)
+# remove all English stopwords from the corpus
+> corpus = tm_map(corpus, removeWords, stopwords("en"))
+# stem the words in the corpus
+> corpus = tm_map(corpus, stemDocument)
+
+# Build a document term matrix from the corpus
+> dtm = DocumentTermMatrix(corpus)
+> dtm
+<<DocumentTermMatrix (documents: 5728, terms: 28687)>>
+Non-/sparse entries: 481719/163837417
+Sparsity           : 100%
+Maximal term length: 24
+Weighting          : term frequency (tf)
+
+ #Remove sparse terms (that don't appear very often)
+> spdtm = removeSparseTerms(dtm, 0.95)
+> spdtm
+<<DocumentTermMatrix (documents: 5728, terms: 330)>>
+Non-/sparse entries: 213551/1676689
+Sparsity           : 89%
+Maximal term length: 10
+Weighting          : term frequency (tf)
+
+# Convert spdtm to a data frame
+> emailsSparse = as.data.frame(as.matrix(spdtm))
+# make variable names of emailsSparse valid i.e. R-friendly (to convert variables names starting with numbers)
+> colnames(emailsSparse) = make.names(colnames(emailsSparse))
+# word stem that shows up most frequently across all the emails:
+> sort(colSums(emailsSparse))
+
+# Add dependent variable to this dataset
+> emailsSparse$spam = emails$spam
+# most frequent words in ham:
+> sort(colSums(subset(emailsSparse, spam == 0)))
+# most frequent words in spam:
+> sort(colSums(subset(emailsSparse, spam == 1)))
+
+#Building machine learning models
+# convert the dependent variable to a factor
+> emailsSparse$spam = as.factor(emailsSparse$spam)
+# split the dataset into training and testing set
+> library(caTools)
+> set.seed(123)
+> spl = sample.split(emailsSparse$spam, 0.7)
+> train = subset(emailsSparse, spl == TRUE)
+> test = subset(emailsSparse, spl == FALSE)
+
+#logic regression model
+> spamLog = glm(spam~., data=train, family="binomial")
+Warning messages:
+1: glm.fit: algorithm did not converge 
+2: glm.fit: fitted probabilities numerically 0 or 1 occurred 
+> summary(spamLog)
+
+# Build a CART model
+> library(rpart)
+> library(rpart.plot)
+> spamCART = rpart(spam~., data=train, method="class")
+> prp(spamCART)
+
+# Build a random forest model
+> library(randomForest)
+randomForest 4.6-12
+Type rfNews() to see new features/changes/bug fixes.
+> set.seed(123)
+> spamRF = randomForest(spam~., data=train)
+
+# Evaluate the performance of the CART model on training set
+> table(train$spam, predTrainCART > 0.5)
+
